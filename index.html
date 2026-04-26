@@ -320,6 +320,9 @@
     <!-- Status / Logs -->
     <div id="status-message" class="mt-2 h-6 text-lg font-mono text-center text-yellow-300 font-bold"></div>
 
+    <!-- NN unavailable toast -->
+    <div id="nn-toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-gray-900 border border-yellow-500 text-yellow-300 px-5 py-2 rounded-lg shadow-xl text-sm font-mono pointer-events-none"></div>
+
     <!-- Start Menu Modal -->
     <div id="start-menu" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay">
         <div class="bg-gray-800 p-8 rounded-xl border border-yellow-600 text-center shadow-2xl max-w-md w-full">
@@ -518,9 +521,11 @@
         const PST_KING = [[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],[20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]];
         const PST = { p: PST_PAWN, n: PST_KNIGHT, b: PST_BISHOP, r: PST_ROOK, q: PST_QUEEN, k: PST_KING };
         const AI_CONFIG = {
+            beginner: { depth: 1, randomness: 120, usePositional: false },
             easy: { depth: 1, randomness: 80, usePositional: false },
             medium: { depth: 3, randomness: 15, usePositional: true },
-            hard: { depth: 4, randomness: 0, usePositional: true }
+            hard: { depth: 4, randomness: 0, usePositional: true },
+            master: { depth: 5, randomness: 0, usePositional: true }
         };
 
         // ════════════════════════════════════════
@@ -1095,12 +1100,20 @@
         let nnWorker = null;
         let nnReady = false;
 
+        function showNNUnavailable() {
+            const toast = document.getElementById('nn-toast');
+            toast.innerText = 'Neural AI unavailable — using classic engine';
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
         function initNNWorker() {
             if (nnWorker) return;
             try {
                 nnWorker = new Worker('browser/ai_worker.js');
             } catch(e) {
                 console.warn('Web Worker failed to start, using minimax AI:', e.message);
+                showNNUnavailable();
                 return;
             }
 
@@ -1134,6 +1147,8 @@
 
                 if (msg.type === 'error') {
                     console.error('NN AI error:', msg.message);
+                    if (!nnReady) showNNUnavailable();
+                    nnReady = false;
                     aiThinking = false;
                     makeAIMove_minimax();
                 }
@@ -1142,6 +1157,7 @@
             nnWorker.onerror = function(e) {
                 console.error('NN Worker error:', e.message);
                 nnReady = false;
+                showNNUnavailable();
             };
 
             nnWorker.postMessage({ type: 'init', modelUrl: 'export/chess_model.onnx' });

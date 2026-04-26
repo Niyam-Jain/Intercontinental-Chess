@@ -118,8 +118,9 @@ class MCTS {
         root.isExpanded = true;
         root.visitCount = 1;
 
+        const deadline = Date.now() + 15000;
         for (let sim = 0; sim < this.numSimulations - 1; sim++) {
-            if (cancelCheck()) break;
+            if (cancelCheck() || Date.now() > deadline) break;
 
             // Post progress every 10 sims
             if (sim % 10 === 0) {
