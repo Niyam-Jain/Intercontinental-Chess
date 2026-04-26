@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Intercontinental Chess</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700&family=Roboto:wght@400;700&display=swap');
+
+        :root {
+            --board-light: #eaddcf;
+            --board-dark: #a87b51;
+            --highlight: rgba(255, 255, 0, 0.5);
+            --move-hint: rgba(0, 100, 0, 0.4); 
+            --capture-hint: rgba(200, 0, 0, 0.5);
+        }
+
+        body {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            font-family: 'Roboto', sans-serif;
+            overflow: hidden;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+
+        .board-container {
+            user-select: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: border 0.3s;
+        }
+        
+        .board-container.review-mode {
+            border: 4px solid #fbbf24; /* Amber border for review mode */
+        }
+
+        .square {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .square.light { background-color: var(--board-light); }
+        .square.dark { background-color: var(--board-dark); }
+        
+        .square.selected { background-color: rgba(100, 200, 100, 0.6) !important; }
+        /* Last Move Highlight: Yellowish tint */
+        .square.last-move { background-color: rgba(255, 255, 0, 0.3) !important; }
+        .square.check { background: radial-gradient(circle, rgba(255,0,0,0.8) 0%, rgba(255,0,0,0) 70%); }
+
+        .hint-dot {
+            width: 30%;
+            height: 30%;
+            background-color: var(--move-hint);
+            border-radius: 50%;
+            box-shadow: 0 0 2px rgba(255,255,255,0.4);
+        }
+        
+        .capture-ring {
+            width: 85%;
+            height: 85%;
+            border: 6px solid var(--capture-hint);
+            border-radius: 50%;
+            box-shadow: 0 0 4px rgba(255,0,0,0.4);
+        }
+
+        /* Piece Styling */
+        .piece {
+            width: 90%;
+            height: 90%;
+            cursor: grab;
+            transition: transform 0.1s;
+            position: relative;
+            z-index: 10;
+        }
+
+        .piece:active {
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+
+        .piece-sliding {
+            transition: transform 0.2s ease-out;
+        }
+
+        @keyframes captureFade {
+            from { transform: scale(1); opacity: 1; }
+            to   { transform: scale(0.2); opacity: 0; }
+        }
+
+        .capture-fade {
+            animation: captureFade 0.2s ease-out forwards;
+            pointer-events: none;
+        }
+
+        .coord-label {
+            position: absolute;
+            font-size: 10px;
+            font-weight: bold;
+            opacity: 0.6;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* Western Pieces - Improved Visibility */
+        .western-piece {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(36px, 7vw, 60px); /* Larger Size */
+            font-weight: bold;
+        }
+        
+        .western-piece.white {
+            color: #fff;
+            filter: drop-shadow(0 1px 1px #000) drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+        }
+
+        .western-piece.black {
+            color: #111;
+            /* White outline for visibility on dark squares */
+            text-shadow: 0 0 2px #fff, 0 0 1px #fff; 
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+        }
+
+        /* Xiangqi Style Pieces (Base / Black Side Default) */
+        .xiangqi-piece {
+            width: 92%;
+            height: 92%;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #2a2a2a, #0a0a0a);
+            border: 3px solid #666;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #d4af37;
+            font-family: 'Noto Serif SC', serif;
+            font-weight: 700;
+            font-size: clamp(20px, 4.5vw, 36px);
+            position: relative;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        }
+        .xiangqi-piece::after {
+            content: '';
+            position: absolute;
+            top: 3px; left: 3px; right: 3px; bottom: 3px;
+            border-radius: 50%;
+            border: 1px dashed rgba(255,255,255,0.2);
+        }
+        /* Black Cannon */
+        .xiangqi-piece.cannon-piece {
+            border-color: #ff4444;
+            color: #ff4444;
+            background: linear-gradient(145deg, #3a1a1a, #1a0505);
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+        }
+
+        /* Xiangqi White Side Variant */
+        .xiangqi-piece.white {
+            background: linear-gradient(145deg, #f3e5ab, #d4b483); /* Light Parchment/Wood */
+            border-color: #8b4513; /* Brown Border */
+            color: #c00; /* Red Text */
+            box-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            text-shadow: none;
+        }
+        .xiangqi-piece.white::after {
+             border-color: rgba(139, 69, 19, 0.3);
+        }
+        /* White Cannon */
+        .xiangqi-piece.white.cannon-piece {
+            border-color: #d00;
+            color: #d00;
+            background: linear-gradient(145deg, #ffcccc, #ffaaaa);
+            box-shadow: 0 0 10px rgba(200, 0, 0, 0.3);
+        }
+
+
+        /* African Style Pieces */
+        .african-piece {
+            width: 90%;
+            height: 90%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: clamp(28px, 5vw, 48px);
+            filter: drop-shadow(0 3px 3px rgba(0,0,0,0.4));
+            background: radial-gradient(circle, rgba(160, 82, 45, 0.2) 0%, rgba(0,0,0,0) 70%);
+            border-radius: 50%;
+        }
+        .african-bg-w { /* If playing as white side */
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, rgba(0,0,0,0) 70%);
+        }
+        .african-bg-b { /* If playing as black side */
+            background: radial-gradient(circle, rgba(0, 0, 0, 0.4) 0%, rgba(0,0,0,0) 70%);
+        }
+
+        /* Charge Indicators */
+        .charge-pip {
+            position: absolute;
+            bottom: 0px;
+            width: 10px;
+            height: 10px;
+            background-color: #00ff00;
+            border-radius: 50%;
+            border: 2px solid #111;
+            box-shadow: 0 0 6px #00ff00;
+            z-index: 20;
+            transition: all 0.3s ease;
+        }
+        .pip-1 { left: 30%; }
+        .pip-2 { right: 30%; }
+        .pip-center { left: 50%; transform: translateX(-50%); }
+        .pip-empty { background-color: #444; box-shadow: none; border-color: #666; }
+
+        /* Modal Overlays */
+        .modal-overlay {
+            background-color: rgba(0,0,0,0.85);
+            backdrop-filter: blur(5px);
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #333; }
+        ::-webkit-scrollbar-thumb { background: #666; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #888; }
+
+        .back-to-portal-btn {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top));
+            left: max(12px, env(safe-area-inset-left));
+            z-index: 100;
+            padding: 10px 20px;
+            min-height: 44px;
+            min-width: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            color: #333;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 700;
+            border-radius: 9999px;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            transition: box-shadow 0.2s, background 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .back-to-portal-btn:hover {
+            background: #fafafa;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+        }
+
+        /* iPad / touch: larger tap targets */
+        @media (pointer: coarse) {
+            #header-toolbar button, #header-toolbar label {
+                min-height: 44px;
+                min-width: 44px;
+                padding: 10px 14px !important;
+            }
+            #header-toolbar .px-3 { padding-left: 14px !important; padding-right: 14px !important; }
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen items-center justify-center p-2 bg-gray-900" onclick="SoundManager.init()">
+
+    <a id="back-btn" href="https://deepbraintechnology.com/" class="back-to-portal-btn">Back to Main Portal</a>
+
+    <!-- Header -->
+    <div class="mb-2 text-center z-10 w-full max-w-4xl">
+        <h1 class="text-3xl font-bold text-yellow-500 mb-2 tracking-wider">Intercontinental Chess</h1>
+        <div id="header-toolbar" class="text-sm text-gray-400 flex flex-wrap items-center justify-center gap-2">
+            <span id="turn-indicator" class="px-3 py-1 bg-white text-black rounded font-bold transition-colors duration-300 shadow-lg">White's Turn</span>
+            <button id="mute-btn" onclick="SoundManager.toggleMute()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white border border-gray-500 text-xs shadow-md transition" title="Toggle Sound">🔊</button>
+            <button onclick="toggleFlip()" class="px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded text-white border border-purple-500 text-xs uppercase shadow-md transition">Flip</button>
+            <button onclick="shareGame()" class="px-3 py-1 bg-teal-700 hover:bg-teal-600 rounded text-white border border-teal-500 text-xs uppercase shadow-md transition">Link</button>
+            <button onclick="downloadGame()" class="px-3 py-1 bg-indigo-700 hover:bg-indigo-600 rounded text-white border border-indigo-500 text-xs uppercase shadow-md transition">Save</button>
+            <label class="px-3 py-1 bg-indigo-900 hover:bg-indigo-800 rounded text-white border border-indigo-500 text-xs uppercase shadow-md transition cursor-pointer">
+                Load <input type="file" onchange="loadGame(this)" class="hidden" accept=".json">
+            </label>
+            <button onclick="showStartMenu()" class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white border border-gray-500 text-xs uppercase shadow-md transition">New</button>
+            <button onclick="showLegend()" class="px-3 py-1 bg-green-700 hover:bg-green-600 rounded text-white border border-green-500 text-xs uppercase shadow-md transition">Legend</button>
+            <button onclick="showRules()" class="px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded text-white border border-blue-500 text-xs uppercase shadow-md transition">Rules</button>
+        </div>
+    </div>
+
+    <div id="captured-top" class="text-center h-6 text-sm opacity-70 flex items-center justify-center gap-0.5 flex-wrap max-w-lg"></div>
+
+    <!-- Game Board -->
+    <div id="board-wrap" class="board-container relative bg-gray-800 p-2 rounded-lg border border-gray-700">
+        <div id="chessboard" class="grid grid-cols-8 grid-rows-8 w-[min(90vw,70vh)] h-[min(90vw,70vh)]">
+            <!-- Grid Generated via JS -->
+        </div>
+    </div>
+    <div id="captured-bottom" class="text-center h-6 text-sm opacity-70 flex items-center justify-center gap-0.5 flex-wrap max-w-lg"></div>
+
+    <!-- Controls -->
+    <div class="mt-2 w-full max-w-lg flex items-center justify-between gap-4">
+        <!-- Review Controls -->
+        <div class="flex items-center gap-1">
+            <button onclick="reviewMove('start')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold" title="Start">&lt;&lt;</button>
+            <button onclick="reviewMove('prev')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold" title="Previous">&lt;</button>
+            <span id="move-counter" class="text-gray-400 font-mono text-sm w-16 text-center">0 / 0</span>
+            <button onclick="reviewMove('next')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold" title="Next">&gt;</button>
+            <button onclick="reviewMove('end')" class="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded font-bold" title="Current">&gt;&gt;</button>
+        </div>
+        
+        <!-- Analysis Button (Hidden until game over) -->
+        <button id="btn-analyze" onclick="analyzeGame()" class="hidden px-4 py-2 bg-pink-700 hover:bg-pink-600 text-white font-bold rounded shadow border border-pink-500 animate-pulse">
+            Analyze Game
+        </button>
+    </div>
+
+    <!-- Status / Logs -->
+    <div id="status-message" class="mt-2 h-6 text-lg font-mono text-center text-yellow-300 font-bold"></div>
+
+    <!-- Start Menu Modal -->
+    <div id="start-menu" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay">
+        <div class="bg-gray-800 p-8 rounded-xl border border-yellow-600 text-center shadow-2xl max-w-md w-full">
+            <h1 class="text-4xl font-bold text-yellow-500 mb-2">New Game</h1>
+            <p class="text-gray-400 mb-6 italic">Choose your armies</p>
+            
+            <div class="space-y-4 text-left">
+                <!-- Army Selectors -->
+                <div>
+                    <label class="block text-white text-sm font-bold mb-2">White Army (Player 1)</label>
+                    <select id="white-army-select" class="w-full bg-gray-700 border border-gray-500 text-white py-2 px-3 rounded">
+                        <option value="western">Western (Standard)</option>
+                        <option value="empire">Empire (Xiangqi)</option>
+                        <option value="african">African (Animals)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-white text-sm font-bold mb-2">Black Army (Player 2 / AI)</label>
+                    <select id="black-army-select" class="w-full bg-gray-700 border border-gray-500 text-white py-2 px-3 rounded">
+                        <option value="western">Western (Standard)</option>
+                        <option value="empire" selected>Empire (Xiangqi)</option>
+                        <option value="african">African (Animals)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-white text-sm font-bold mb-2">AI Difficulty</label>
+                    <select id="difficulty-select" class="w-full bg-gray-700 border border-gray-500 text-white py-2 px-3 rounded">
+                        <option value="beginner">Beginner — Instant, random</option>
+                        <option value="easy">Easy — Light search</option>
+                        <option value="medium" selected>Medium — Moderate search</option>
+                        <option value="hard">Hard — Deep search</option>
+                        <option value="master">Master — Maximum strength</option>
+                    </select>
+                </div>
+
+                <!-- Game Type -->
+                <div class="flex gap-4 pt-4">
+                    <button onclick="startGameFromMenu('pvp')" class="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow border border-blue-400">
+                        Player vs Player
+                    </button>
+                    <button onclick="startGameFromMenu('ai')" class="flex-1 py-3 bg-red-700 hover:bg-red-600 text-white font-bold rounded shadow border border-red-500">
+                        Play vs AI
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Promotion Modal -->
+    <div id="promotion-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-overlay">
+        <div class="bg-gray-800 p-6 rounded-xl border border-yellow-600 text-center shadow-2xl">
+            <h2 class="text-xl text-yellow-500 mb-4">Promote Pawn</h2>
+            <div id="promotion-options" class="flex gap-4 justify-center">
+                <!-- Options injected via JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Legend Modal -->
+    <div id="legend-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-overlay">
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-600 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h2 class="text-2xl text-yellow-500 mb-6 font-bold text-center">Army Legends</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Empire Legend -->
+                <div class="bg-gray-700/50 p-4 rounded border border-gray-600">
+                    <h3 class="text-xl text-red-400 font-bold mb-3 border-b border-gray-600 pb-2">The Empire</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3"><div class="piece xiangqi-piece cannon-piece text-xl">砲</div> <div class="text-sm"><span class="text-yellow-400">Dragon Cannon</span> (Queen slot)<br><span class="text-xs text-gray-400">Rook Move + 2 Jump Charges</span></div></div>
+                        <div class="flex items-center gap-3"><div class="piece xiangqi-piece text-xl">將</div> <div class="text-sm">General (King)</div></div>
+                        <div class="flex items-center gap-3"><div class="piece xiangqi-piece text-xl">車</div> <div class="text-sm">Chariot (Rook)</div></div>
+                        <div class="flex items-center gap-3"><div class="piece xiangqi-piece text-xl">馬</div> <div class="text-sm">Horse (Knight)</div></div>
+                        <div class="flex items-center gap-3"><div class="piece xiangqi-piece text-xl">相</div> <div class="text-sm">Minister (Bishop)</div></div>
+                    </div>
+                </div>
+
+                <!-- African Legend -->
+                <div class="bg-gray-700/50 p-4 rounded border border-gray-600">
+                    <h3 class="text-xl text-green-400 font-bold mb-3 border-b border-gray-600 pb-2">African Army</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center gap-3"><div class="text-3xl">🐆</div> <div class="text-sm"><span class="text-yellow-400">Leopard</span> (Queen slot)<br><span class="text-xs text-gray-400">Rook Move + 1 Jump Charge</span></div></div>
+                        <div class="flex items-center gap-3"><div class="text-3xl">🐵</div> <div class="text-sm"><span class="text-yellow-400">Chimpanzee</span> (Bishop)<br><span class="text-xs text-gray-400">Bishop Move + 1 Jump Charge</span></div></div>
+                        <div class="flex items-center gap-3"><div class="text-3xl">🦁</div> <div class="text-sm">Lion King (King)</div></div>
+                        <div class="flex items-center gap-3"><div class="text-3xl">🐘</div> <div class="text-sm">Elephant (Rook)</div></div>
+                        <div class="flex items-center gap-3"><div class="text-3xl">🦓</div> <div class="text-sm">Zebra (Knight)</div></div>
+                        <div class="flex items-center gap-3"><div class="text-3xl">🐾</div> <div class="text-sm">Cub (Pawn)</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="hideLegend()" class="mt-6 w-full py-2 bg-yellow-600 hover:bg-yellow-500 text-black font-bold rounded">Close</button>
+        </div>
+    </div>
+
+    <!-- Rules Modal (Simplified) -->
+    <div id="rules-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-overlay">
+        <div class="bg-gray-800 p-6 rounded-xl border border-gray-600 max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <h2 class="text-2xl text-yellow-500 mb-4 font-bold">Intercontinental Chess Rules</h2>
+            <div class="space-y-3 text-sm text-gray-300 text-left">
+                <p><strong>Western:</strong> Standard Chess.</p>
+                <div class="border-t border-gray-700 my-2"></div>
+                <p><strong>Empire:</strong></p>
+                <ul class="list-disc pl-5">
+                    <li><strong>Dragon Cannon:</strong> Moves like Rook. Can jump over 1 piece to capture (Costs 1 Charge). Max 2 Charges.</li>
+                </ul>
+                <div class="border-t border-gray-700 my-2"></div>
+                <p><strong>African:</strong></p>
+                <ul class="list-disc pl-5">
+                    <li><strong>Leopard (Queen):</strong> Moves like Rook. Can jump over 1 piece to capture (Costs 1 Charge). Max 1 Charge.</li>
+                    <li><strong>Chimpanzee (Bishop):</strong> Moves like Bishop. Can jump over 1 piece to capture (Costs 1 Charge). Max 1 Charge.</li>
+                </ul>
+            </div>
+            <button onclick="hideRules()" class="mt-6 w-full py-2 bg-yellow-600 hover:bg-yellow-500 text-black font-bold rounded">Close</button>
+        </div>
+    </div>
+
+    <!-- Analysis Modal -->
+    <div id="analysis-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-overlay">
+        <div class="bg-gray-800 p-6 rounded-xl border border-pink-500 max-w-lg w-full max-h-[85vh] flex flex-col shadow-2xl">
+            <h2 class="text-2xl text-pink-400 mb-4 font-bold text-center">Game Analysis</h2>
+            <div id="analysis-content" class="flex-1 overflow-y-auto space-y-2 text-sm text-gray-300 p-2 bg-gray-900 rounded border border-gray-700">
+                <!-- Analysis Injected Here -->
+            </div>
+            <button onclick="document.getElementById('analysis-modal').classList.add('hidden')" class="mt-4 w-full py-2 bg-gray-600 hover:bg-gray-500 text-white font-bold rounded">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // ════════════════════════════════════════
+        // SECTION 3: SOUND ENGINE
+        // ════════════════════════════════════════
+        const SoundManager = {
+            ctx: null,
+            muted: localStorage.getItem('chess-muted') === 'true',
+            init: function() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                updateMuteButton();
+            },
+            toggleMute: function() {
+                this.muted = !this.muted;
+                localStorage.setItem('chess-muted', String(this.muted));
+                updateMuteButton();
+            },
+            playTone: function(freq, type, duration, startTime = 0, vol = 0.08) {
+                if (this.muted) return;
+                if (!this.ctx) return;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, this.ctx.currentTime + startTime);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime + startTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + startTime + duration);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(this.ctx.currentTime + startTime);
+                osc.stop(this.ctx.currentTime + startTime + duration);
+            },
+            move: function() { this.init(); this.playTone(400, 'sine', 0.06, 0, 0.06); this.playTone(300, 'sine', 0.04, 0.02, 0.06); },
+            capture: function() { this.init(); this.playTone(200, 'triangle', 0.12, 0, 0.10); this.playTone(120, 'sine', 0.08, 0.03, 0.10); },
+            check: function() { this.init(); this.playTone(600, 'sine', 0.2, 0, 0.09); setTimeout(() => this.playTone(800, 'sine', 0.2, 0, 0.09), 100); },
+            win: function() { this.init(); [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => this.playTone(f, 'triangle', 0.4, i * 0.15, 0.09)); },
+            draw: function() { this.init(); this.playTone(200, 'sawtooth', 0.5, 0, 0.08); }
+        };
+
+        // ════════════════════════════════════════
+        // SECTION 1: CONSTANTS & CONFIGURATION
+        // ════════════════════════════════════════
+        const WESTERN_PIECES = { 
+            w: { k: '♔', q: '♕', r: '♖', b: '♗', n: '♘', p: '♙' },
+            b: { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }
+        };
+        const EMPIRE_PIECES = { k: '將', q: '砲', r: '車', b: '相', n: '馬', p: '卒' };
+        const AFRICAN_PIECES = { k: '🦁', q: '🐆', r: '🐘', b: '🐵', n: '🦓', p: '🐾' };
+
+        const BOARD_SIZE = 8;
+        const WHITE = 'w';
+        const BLACK = 'b';
+        const INITIAL_PAWN_ROW_WHITE = 6;
+        const INITIAL_PAWN_ROW_BLACK = 1;
+        const BACK_RANK_WHITE = 7;
+        const BACK_RANK_BLACK = 0;
+        const BACK_RANK_TYPES = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
+        const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+        const PST_PAWN = [[0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],[5,5,10,25,25,10,5,5],[0,0,0,20,20,0,0,0],[5,-5,-10,0,0,-10,-5,5],[5,10,10,-20,-20,10,10,5],[0,0,0,0,0,0,0,0]];
+        const PST_KNIGHT = [[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],[-30,0,10,15,15,10,0,-30],[-30,5,15,20,20,15,5,-30],[-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],[-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]];
+        const PST_BISHOP = [[-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,10,10,10,10,0,-10],[-10,5,5,10,10,5,5,-10],[-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],[-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]];
+        const PST_ROOK = [[0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]];
+        const PST_QUEEN = [[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],[-10,0,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],[0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],[-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]];
+        const PST_KING = [[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],[20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]];
+        const PST = { p: PST_PAWN, n: PST_KNIGHT, b: PST_BISHOP, r: PST_ROOK, q: PST_QUEEN, k: PST_KING };
+        const AI_CONFIG = {
+            easy: { depth: 1, randomness: 80, usePositional: false },
+            medium: { depth: 3, randomness: 15, usePositional: true },
+            hard: { depth: 4, randomness: 0, usePositional: true }
+        };
+
+        // ════════════════════════════════════════
+        // SECTION 2: GAME STATE
+        // ════════════════════════════════════════
+        let board = [];
+        let turn = 'w';
+        let castling = { w: { k: true, q: true }, b: { k: true, q: true } };
+        let enPassant = null;
+        let selectedSquare = null;
+        let validMoves = [];
+        let isGameOver = false;
+        let isFlipped = false;
+        let lastMove = null;
+        
+        // History Management
+        let history = []; // Stack of full game states
+        let viewIndex = 0; // Current index in history being viewed
+        
+        let gameMode = 'pvp';
+        let aiThinking = false;
+        let aiDifficulty = 'medium';
+
+        // Army Configuration
+        let armies = { w: 'western', b: 'empire' };
+
+        // ════════════════════════════════════════
+        // SECTION 4: BOARD SETUP & INITIALIZATION
+        // ════════════════════════════════════════
+        
+        function showStartMenu() {
+            document.getElementById('start-menu').classList.remove('hidden');
+            var backBtn = document.getElementById('back-btn');
+            backBtn.textContent = 'Back to Main Portal';
+            backBtn.href = 'https://deepbraintechnology.com/';
+            backBtn.onclick = null;
+        }
+
+        function startGameFromMenu(mode) {
+            cancelNNSearch();
+            gameMode = mode;
+            armies.w = document.getElementById('white-army-select').value;
+            armies.b = document.getElementById('black-army-select').value;
+            aiDifficulty = document.getElementById('difficulty-select').value;
+            isFlipped = false;
+            document.getElementById('start-menu').classList.add('hidden');
+            SoundManager.init();
+            initGame();
+            var backBtn = document.getElementById('back-btn');
+            backBtn.textContent = 'Back to Home';
+            backBtn.href = '#';
+            backBtn.onclick = function(e) { e.preventDefault(); showStartMenu(); };
+        }
+
+        function initGame() {
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null));
+            turn = WHITE;
+            castling = { w: { k: true, q: true }, b: { k: true, q: true } };
+            enPassant = null;
+            lastMove = null;
+            isGameOver = false;
+            selectedSquare = null;
+            aiThinking = false;
+            
+            // Clear History
+            history = [];
+            
+            const setupRow = (row, color, army) => {
+                BACK_RANK_TYPES.forEach((type, col) => {
+                    placePiece(row, col, type, color, army);
+                });
+            };
+
+            // White Setup
+            setupRow(BACK_RANK_WHITE, WHITE, armies.w);
+            for(let c=0; c<BOARD_SIZE; c++) placePiece(INITIAL_PAWN_ROW_WHITE, c, 'p', WHITE, armies.w);
+
+            // Black Setup
+            setupRow(BACK_RANK_BLACK, BLACK, armies.b);
+            for(let c=0; c<BOARD_SIZE; c++) placePiece(INITIAL_PAWN_ROW_BLACK, c, 'p', BLACK, armies.b);
+
+            // Push initial state to history
+            saveToHistory();
+            viewIndex = 0;
+
+            renderBoard();
+            updateStatus();
+
+            if (gameMode === 'ai' && turn === 'b') {
+                setTimeout(makeAIMove, 800);
+            }
+        }
+
+        function toggleFlip() {
+            isFlipped = !isFlipped;
+            renderBoard();
+        }
+
+        function placePiece(r, c, type, color, army) {
+            const piece = { type, color, army, charges: 0 };
+            if (army === 'empire') {
+                if (type === 'q') piece.charges = 2; 
+            } else if (army === 'african') {
+                if (type === 'q') piece.charges = 1; 
+                if (type === 'b') piece.charges = 1; 
+            }
+            board[r][c] = piece;
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 11: HISTORY & REVIEW
+        // ════════════════════════════════════════
+        function saveToHistory() {
+            // Deep copy state
+            const state = {
+                board: board.map(row => row.map(p => p ? {...p} : null)),
+                turn: turn,
+                castling: JSON.parse(JSON.stringify(castling)),
+                enPassant: enPassant ? {...enPassant} : null,
+                lastMove: lastMove ? {...lastMove} : null,
+                isGameOver: isGameOver
+            };
+            history.push(state);
+            viewIndex = history.length - 1;
+            updateMoveCounter();
+        }
+
+        function reviewMove(action) {
+            if (history.length === 0) return;
+
+            if (action === 'start') viewIndex = 0;
+            else if (action === 'prev') viewIndex = Math.max(0, viewIndex - 1);
+            else if (action === 'next') viewIndex = Math.min(history.length - 1, viewIndex + 1);
+            else if (action === 'end') viewIndex = history.length - 1;
+
+            const state = history[viewIndex];
+            
+            // Restore visual state only (don't break current game logic variables unless we are at end)
+            // But to render correctly, we set the globals to this snapshot
+            board = state.board; // Reference update is fine for render
+            // Note: We don't update 'turn' global for logic if we are just viewing, 
+            // but renderBoard uses 'turn' for highlighting check.
+            // Let's just restore everything for display purposes.
+            // When user tries to move, we check if viewIndex === history.length - 1
+            
+            // Visual restore
+            const oldTurn = turn; // Keep real turn if needed? No, just fully swap state for view
+            turn = state.turn;
+            castling = state.castling;
+            enPassant = state.enPassant;
+            lastMove = state.lastMove;
+            isGameOver = state.isGameOver;
+
+            updateMoveCounter();
+            renderBoard();
+            updateCapturedPieces();
+            
+            // Update UI indication
+            const boardWrap = document.getElementById('board-wrap');
+            if (viewIndex < history.length - 1) {
+                boardWrap.classList.add('review-mode');
+                document.getElementById('status-message').innerText = "Reviewing History...";
+            } else {
+                boardWrap.classList.remove('review-mode');
+                updateStatus();
+            }
+        }
+
+        function updateMoveCounter() {
+            document.getElementById('move-counter').innerText = `${viewIndex} / ${history.length - 1}`;
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 5: MOVE GENERATION & VALIDATION
+        // ════════════════════════════════════════
+
+        function isValidPos(r, c) { return r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE; }
+
+        function cloneBoard(boardState) {
+            return boardState.map(row => row.map(p => p ? {...p} : null));
+        }
+
+        function findKing(boardState, color) {
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const p = boardState[r][c];
+                    if (p && p.type === 'k' && p.color === color) return { r, c };
+                }
+            }
+            return null;
+        }
+
+        function hasAnyLegalMoves(color) {
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const p = board[r][c];
+                    if (p && p.color === color && getLegalMoves(r, c).length > 0) return true;
+                }
+            }
+            return false;
+        }
+
+        function getPseudoMoves(r, c, piece, boardState = board) {
+            const moves = [];
+            const { type, color, army, charges } = piece;
+            const opponent = color === 'w' ? 'b' : 'w';
+            const addMove = (tr, tc, isJumpCapture = false) => { moves.push({ r: tr, c: tc, isJumpCapture }); };
+            const orth = [[1,0], [-1,0], [0,1], [0,-1]];
+            const diag = [[1,1], [1,-1], [-1,1], [-1,-1]];
+            const knightDirs = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+
+            if (type === 'p') {
+                const forward = color === WHITE ? -1 : 1;
+                const startRow = color === WHITE ? INITIAL_PAWN_ROW_WHITE : INITIAL_PAWN_ROW_BLACK;
+                if (isValidPos(r + forward, c) && !boardState[r + forward][c]) {
+                    addMove(r + forward, c);
+                    if (r === startRow && isValidPos(r + forward * 2, c) && !boardState[r + forward * 2][c]) addMove(r + forward * 2, c);
+                }
+                [[forward, -1], [forward, 1]].forEach(([dr, dc]) => {
+                    const tr = r + dr, tc = c + dc;
+                    if (isValidPos(tr, tc)) {
+                        const target = boardState[tr][tc];
+                        if (target && target.color === opponent) addMove(tr, tc);
+                        else if (enPassant && enPassant.r === tr && enPassant.c === tc) addMove(tr, tc); 
+                    }
+                });
+            }
+            if (type === 'n') {
+                knightDirs.forEach(([dr, dc]) => {
+                    const tr = r + dr, tc = c + dc;
+                    if (isValidPos(tr, tc)) {
+                        const target = boardState[tr][tc];
+                        if (!target || target.color !== color) addMove(tr, tc);
+                    }
+                });
+            }
+            if (type === 'k') {
+                [...orth, ...diag].forEach(([dr, dc]) => {
+                    const tr = r + dr, tc = c + dc;
+                    if (isValidPos(tr, tc)) {
+                        const target = boardState[tr][tc];
+                        if (!target || target.color !== color) addMove(tr, tc);
+                    }
+                });
+                if (boardState === board) { // Simple castling check logic
+                    if (color === 'w' && r === 7 && c === 4) {
+                        if (castling.w.k && !boardState[7][5] && !boardState[7][6]) addMove(7, 6);
+                        if (castling.w.q && !boardState[7][3] && !boardState[7][2] && !boardState[7][1]) addMove(7, 2);
+                    }
+                    if (color === 'b' && r === 0 && c === 4) {
+                        if (castling.b.k && !boardState[0][5] && !boardState[0][6]) addMove(0, 6);
+                        if (castling.b.q && !boardState[0][3] && !boardState[0][2] && !boardState[0][1]) addMove(0, 2);
+                    }
+                }
+            }
+
+            const slideAndJump = (dirs, canSlide, canJump, chargesCost) => {
+                dirs.forEach(([dr, dc]) => {
+                    let i = 1;
+                    let screenFound = false;
+                    while (true) {
+                        const tr = r + dr * i, tc = c + dc * i;
+                        if (!isValidPos(tr, tc)) break;
+                        const target = boardState[tr][tc];
+                        if (!screenFound) {
+                            if (!target) { if (canSlide) addMove(tr, tc); } 
+                            else { if (canSlide && target.color !== color) addMove(tr, tc); screenFound = true; }
+                        } else {
+                            if (canJump && charges > 0) {
+                                if (target) { if (target.color !== color) addMove(tr, tc, true); break; }
+                            } else { break; }
+                        }
+                        i++;
+                    }
+                });
+            };
+
+            if (type === 'r') slideAndJump(orth, true, false, 0);
+            if (type === 'b') slideAndJump(diag, true, (army === 'african'), 1);
+            if (type === 'q') {
+                if (army === 'empire' || army === 'african') slideAndJump(orth, true, true, 1);
+                else slideAndJump([...orth, ...diag], true, false, 0);
+            }
+            return moves;
+        }
+
+        function isSquareAttacked(r, c, attackerColor, boardState = board) {
+            for(let i=0; i<8; i++) {
+                for(let j=0; j<8; j++) {
+                    const p = boardState[i][j];
+                    if (p && p.color === attackerColor) {
+                        const moves = getPseudoMoves(i, j, p, boardState);
+                        if (moves.some(m => m.r === r && m.c === c)) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function getLegalMoves(r, c, boardState = board) {
+            const piece = boardState[r][c];
+            if (!piece || piece.color !== (boardState === board ? turn : piece.color)) return [];
+            
+            const pseudoMoves = getPseudoMoves(r, c, piece, boardState);
+            const legalMoves = [];
+
+            pseudoMoves.forEach(move => {
+                const nextBoard = cloneBoard(boardState);
+                const movingPiece = nextBoard[r][c];
+                if (move.isJumpCapture) movingPiece.charges--;
+                nextBoard[r][c] = null;
+                nextBoard[move.r][move.c] = movingPiece;
+                if (piece.type === 'p' && move.c !== c && !boardState[move.r][move.c]) nextBoard[r][move.c] = null;
+
+                let kingPos = null;
+                for (let i=0; i<8; i++) {
+                    for (let j=0; j<8; j++) {
+                        const p = nextBoard[i][j];
+                        if (p && p.color === piece.color && p.type === 'k') { kingPos = { r: i, c: j }; break; }
+                    }
+                }
+
+                if (kingPos) {
+                    if (!isSquareAttacked(kingPos.r, kingPos.c, piece.color === 'w' ? 'b' : 'w', nextBoard)) {
+                        // Castling safety
+                        if (piece.type === 'k' && Math.abs(move.c - c) === 2 && boardState === board) {
+                            const row = r;
+                            const dir = (move.c - c) > 0 ? 1 : -1;
+                            if (!isSquareAttacked(row, c, turn === 'w' ? 'b' : 'w', board) &&
+                                !isSquareAttacked(row, c + dir, turn === 'w' ? 'b' : 'w', board) &&
+                                !isSquareAttacked(row, c + 2*dir, turn === 'w' ? 'b' : 'w', board)) {
+                                legalMoves.push(move);
+                            }
+                        } else {
+                            legalMoves.push(move);
+                        }
+                    }
+                }
+            });
+            return legalMoves;
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 6: MOVE EXECUTION & TURN MANAGEMENT
+        // ════════════════════════════════════════
+        function executeMove(move, isAiMove = false) {
+            const piece = board[selectedSquare.r][selectedSquare.c];
+            const target = board[move.r][move.c];
+
+            if (target) SoundManager.capture();
+            else SoundManager.move();
+            
+            lastMove = { from: { r: selectedSquare.r, c: selectedSquare.c }, to: { r: move.r, c: move.c } };
+
+            if (piece.type === 'k') { castling[piece.color].k = false; castling[piece.color].q = false; }
+            else if (piece.type === 'r') {
+                if (selectedSquare.r === 0 || selectedSquare.r === 7) {
+                    if (selectedSquare.c === 0) castling[piece.color].q = false;
+                    if (selectedSquare.c === 7) castling[piece.color].k = false;
+                }
+            }
+
+            if (piece.type === 'k' && Math.abs(move.c - selectedSquare.c) === 2) {
+                const isKingSide = move.c > selectedSquare.c;
+                const rookSrcCol = isKingSide ? 7 : 0;
+                const rookDstCol = isKingSide ? 5 : 3;
+                const rook = board[move.r][rookSrcCol];
+                board[move.r][rookDstCol] = rook;
+                board[move.r][rookSrcCol] = null;
+            }
+
+            if (piece.type === 'p' && move.c !== selectedSquare.c && !target) {
+                const epPawn = board[selectedSquare.r][move.c];
+                if (epPawn) SoundManager.capture();
+                board[selectedSquare.r][move.c] = null;
+            }
+
+            if (move.isJumpCapture) piece.charges--;
+
+            board[move.r][move.c] = piece;
+            board[selectedSquare.r][selectedSquare.c] = null;
+
+            if (piece.type === 'p' && Math.abs(move.r - selectedSquare.r) === 2) {
+                enPassant = { r: (move.r + selectedSquare.r) / 2, c: move.c };
+            } else {
+                enPassant = null;
+            }
+
+            if (piece.type === 'p' && (move.r === 0 || move.r === 7)) {
+                if (isAiMove) {
+                    placePiece(move.r, move.c, 'q', piece.color, piece.army);
+                    finishTurn();
+                } else {
+                    showPromotionModal(move.r, move.c, piece.color, piece.army);
+                }
+            } else {
+                finishTurn();
+            }
+        }
+
+        function finishTurn() {
+            turn = turn === WHITE ? BLACK : WHITE;
+            selectedSquare = null;
+            validMoves = [];
+
+            const wKing = findKing(board, WHITE);
+            const bKing = findKing(board, BLACK);
+            if (!wKing) { endGame("Black Wins (King Captured)"); saveToHistory(); return; }
+            if (!bKing) { endGame("White Wins (King Captured)"); saveToHistory(); return; }
+
+            const kingPos = turn === WHITE ? wKing : bKing;
+            const inCheck = kingPos ? isSquareAttacked(kingPos.r, kingPos.c, turn === WHITE ? BLACK : WHITE) : false;
+            if (inCheck) SoundManager.check();
+            const hasMoves = hasAnyLegalMoves(turn);
+
+            if (!hasMoves) {
+                if (inCheck) endGame(`Checkmate! ${turn===WHITE?'Black':'White'} Wins`);
+                else endGame("Stalemate! Draw");
+            } else {
+                updateStatus(inCheck);
+                if (gameMode === 'ai' && turn === BLACK) {
+                    aiThinking = true;
+                    setTimeout(makeAIMove, 500);
+                } else {
+                    aiThinking = false;
+                }
+            }
+            
+            // Save state *after* all updates
+            saveToHistory();
+            renderBoard();
+        }
+
+        function endGame(msg) {
+            isGameOver = true;
+            SoundManager.win();
+            document.getElementById('status-message').innerText = msg;
+            document.getElementById('btn-analyze').classList.remove('hidden');
+            renderBoard();
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 7: AI ENGINE
+        // ════════════════════════════════════════
+        function evaluateBoard(boardState, usePositional) {
+            let score = 0;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const p = boardState[r][c];
+                    if (!p) continue;
+                    let value = PIECE_VALUES[p.type] || 100;
+                    if ((p.army === 'empire' || p.army === 'african') && p.type === 'q') value = 550 + (p.charges * 150);
+                    if (p.army === 'african' && p.type === 'b') value = 330 + (p.charges * 100);
+                    if (usePositional && PST[p.type]) {
+                        const row = p.color === WHITE ? r : 7 - r;
+                        value += PST[p.type][row][c];
+                    }
+                    score += (p.color === WHITE ? value : -value);
+                }
+            }
+            return score;
+        }
+
+        function evaluateBoardSimple(boardState) { return evaluateBoard(boardState, false); }
+
+        function scoreMoveForOrdering(move, boardState) {
+            let score = 0;
+            const target = boardState[move.to.r][move.to.c];
+            const attacker = boardState[move.from.r][move.from.c];
+            if (target && attacker) score += (PIECE_VALUES[target.type] || 100) * 10 - (PIECE_VALUES[attacker.type] || 100);
+            if (attacker && attacker.type === 'p' && (move.to.r === 0 || move.to.r === 7)) score += 800;
+            if (move.to.isJumpCapture) score += 500;
+            return score;
+        }
+
+        function getAllLegalMoves(boardState, color) {
+            const moves = [];
+            const savedTurn = turn;
+            turn = color;
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                for (let c = 0; c < BOARD_SIZE; c++) {
+                    const p = boardState[r][c];
+                    if (p && p.color === color) getLegalMoves(r, c, boardState).forEach(m => moves.push({ from: { r, c }, to: m }));
+                }
+            }
+            turn = savedTurn;
+            return moves;
+        }
+
+        function simulateMove(boardState, move, castlingState) {
+            const nextBoard = boardState;
+            const piece = nextBoard[move.from.r][move.from.c];
+            const fromR = move.from.r, fromC = move.from.c;
+            const toR = move.to.r, toC = move.to.c;
+            const targetWasEmpty = !nextBoard[toR][toC];
+            const wasEpCapture = piece.type === 'p' && toC !== fromC && targetWasEmpty;
+            if (move.to.isJumpCapture) piece.charges--;
+            nextBoard[fromR][fromC] = null;
+            nextBoard[toR][toC] = piece;
+            if (wasEpCapture) nextBoard[fromR][toC] = null;
+            if (piece.type === 'k' && Math.abs(toC - fromC) === 2) {
+                const ks = toC > fromC;
+                nextBoard[toR][ks ? 5 : 3] = nextBoard[toR][ks ? 7 : 0];
+                nextBoard[toR][ks ? 7 : 0] = null;
+            }
+            if (piece.type === 'p' && (toR === 0 || toR === 7)) {
+                const charges = piece.army === 'empire' ? 2 : piece.army === 'african' ? 1 : 0;
+                nextBoard[toR][toC] = { type: 'q', color: piece.color, army: piece.army, charges };
+            }
+            const nextCastling = JSON.parse(JSON.stringify(castlingState));
+            if (piece.type === 'k') { nextCastling[piece.color].k = false; nextCastling[piece.color].q = false; }
+            if (piece.type === 'r') { if (fromC === 0) nextCastling[piece.color].q = false; if (fromC === 7) nextCastling[piece.color].k = false; }
+            let nextEp = null;
+            if (piece.type === 'p' && Math.abs(toR - fromR) === 2) nextEp = { r: (toR + fromR) / 2, c: toC };
+            return { nextBoard, nextCastling, nextEp };
+        }
+
+        function minimax(boardState, currentTurn, castlingState, epState, depth, alpha, beta, isMaximizing, config) {
+            if (depth === 0) return evaluateBoard(boardState, config.usePositional);
+            const savedEp = enPassant; enPassant = epState;
+            const moves = getAllLegalMoves(boardState, currentTurn);
+            enPassant = savedEp;
+            if (moves.length === 0) {
+                const kingPos = findKing(boardState, currentTurn);
+                const opponent = currentTurn === WHITE ? BLACK : WHITE;
+                if (kingPos && isSquareAttacked(kingPos.r, kingPos.c, opponent, boardState)) return isMaximizing ? -100000 + (10 - depth) : 100000 - (10 - depth);
+                return 0;
+            }
+            moves.sort((a, b) => scoreMoveForOrdering(b, boardState) - scoreMoveForOrdering(a, boardState));
+            const nextTurn = currentTurn === WHITE ? BLACK : WHITE;
+            if (isMaximizing) {
+                let best = -Infinity;
+                for (const move of moves) {
+                    const { nextBoard, nextCastling, nextEp } = simulateMove(cloneBoard(boardState), move, castlingState);
+                    const score = minimax(nextBoard, nextTurn, nextCastling, nextEp, depth - 1, alpha, beta, false, config);
+                    best = Math.max(best, score); alpha = Math.max(alpha, score); if (beta <= alpha) break;
+                }
+                return best;
+            }
+            let best = Infinity;
+            for (const move of moves) {
+                const { nextBoard, nextCastling, nextEp } = simulateMove(cloneBoard(boardState), move, castlingState);
+                const score = minimax(nextBoard, nextTurn, nextCastling, nextEp, depth - 1, alpha, beta, true, config);
+                best = Math.min(best, score); beta = Math.min(beta, score); if (beta <= alpha) break;
+            }
+            return best;
+        }
+
+        function makeAIMove_minimax() {
+            if (isGameOver) return;
+            const config = AI_CONFIG[aiDifficulty] || AI_CONFIG.medium;
+            const moves = getAllLegalMoves(board, turn);
+            if (moves.length === 0) return;
+            const isMax = (turn === WHITE);
+            const nextTurn = turn === WHITE ? BLACK : WHITE;
+            moves.sort((a, b) => scoreMoveForOrdering(b, board) - scoreMoveForOrdering(a, board));
+            let bestMove = null;
+            let bestEval = isMax ? -Infinity : Infinity;
+            for (const move of moves) {
+                const { nextBoard, nextCastling, nextEp } = simulateMove(cloneBoard(board), move, castling);
+                let score = minimax(nextBoard, nextTurn, nextCastling, nextEp, config.depth - 1, -Infinity, Infinity, !isMax, config);
+                if (config.randomness > 0) score += (Math.random() - 0.5) * 2 * config.randomness;
+                if (isMax ? score > bestEval : score < bestEval) { bestEval = score; bestMove = move; }
+            }
+            if (bestMove) { selectedSquare = bestMove.from; executeMove(bestMove.to, true); }
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 13: NEURAL NETWORK AI
+        // ════════════════════════════════════════
+
+        let nnWorker = null;
+        let nnReady = false;
+
+        function initNNWorker() {
+            if (nnWorker) return;
+            try {
+                nnWorker = new Worker('browser/ai_worker.js');
+            } catch(e) {
+                console.warn('Web Worker failed to start, using minimax AI:', e.message);
+                return;
+            }
+
+            nnWorker.onmessage = function(e) {
+                const msg = e.data;
+
+                if (msg.type === 'ready') {
+                    nnReady = true;
+                    console.log('Neural network AI loaded');
+                }
+
+                if (msg.type === 'thinking') {
+                    document.getElementById('status-message').innerText =
+                        'AI thinking... (' + msg.simsDone + '/' + msg.simsTotal + ')';
+                }
+
+                if (msg.type === 'move') {
+                    aiThinking = false;
+                    const from = msg.move.from;
+                    const to   = msg.move.to;
+                    selectedSquare = from;
+                    const legalMoves = getLegalMoves(from.r, from.c);
+                    const targetMove = legalMoves.find(m => m.r === to.r && m.c === to.c);
+                    if (targetMove) {
+                        executeMove(targetMove, true);
+                    } else {
+                        console.warn('NN move not in legal moves, falling back to minimax');
+                        makeAIMove_minimax();
+                    }
+                }
+
+                if (msg.type === 'error') {
+                    console.error('NN AI error:', msg.message);
+                    aiThinking = false;
+                    makeAIMove_minimax();
+                }
+            };
+
+            nnWorker.onerror = function(e) {
+                console.error('NN Worker error:', e.message);
+                nnReady = false;
+            };
+
+            nnWorker.postMessage({ type: 'init', modelUrl: 'export/chess_model.onnx' });
+        }
+
+        function makeAIMove_nn() {
+            if (!nnReady || !nnWorker) { makeAIMove_minimax(); return; }
+            nnWorker.postMessage({
+                type: 'search',
+                gameState: { board, turn, castling, enPassant, armies },
+                difficulty: aiDifficulty,
+            });
+        }
+
+        function cancelNNSearch() {
+            if (nnWorker && aiThinking) nnWorker.postMessage({ type: 'cancel' });
+        }
+
+        function makeAIMove() {
+            if (nnReady) {
+                makeAIMove_nn();
+            } else {
+                makeAIMove_minimax();
+            }
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 12: ANALYSIS
+        // ════════════════════════════════════════
+        function analyzeGame() {
+            const modal = document.getElementById('analysis-modal');
+            const content = document.getElementById('analysis-content');
+            modal.classList.remove('hidden');
+            content.innerHTML = '<div class="text-center text-yellow-500">Calculating...</div>';
+
+            setTimeout(() => {
+                let html = '';
+                let prevScore = 0;
+
+                history.forEach((state, i) => {
+                    const score = evaluateBoardSimple(state.board);
+                    const diff = score - prevScore;
+                    let comment = "Neutral";
+                    let colorClass = "text-gray-400";
+
+                    if (i === 0) {
+                        comment = "Start";
+                    } else {
+                        // Flip perspective: if White moved (Turn was W in prev state), positive diff is good for White.
+                        // History[i] is AFTER the move. History[i-1].turn made the move.
+                        const mover = history[i-1].turn;
+                        const effectiveDiff = mover === 'w' ? diff : -diff;
+
+                        if (effectiveDiff > 500) { comment = "Great Move!"; colorClass = "text-green-400"; }
+                        else if (effectiveDiff > 200) { comment = "Good"; colorClass = "text-blue-300"; }
+                        else if (effectiveDiff < -500) { comment = "Blunder"; colorClass = "text-red-500 font-bold"; }
+                        else if (effectiveDiff < -200) { comment = "Mistake"; colorClass = "text-orange-400"; }
+                    }
+
+                    // Format score for White perspective
+                    const scoreText = (score > 0 ? '+' : '') + (score / 100).toFixed(1);
+
+                    html += `
+                        <div class="flex justify-between items-center p-2 border-b border-gray-700 hover:bg-gray-800 cursor-pointer" onclick="reviewMoveAtIndex(${i})">
+                            <span class="w-8 font-mono text-gray-500">${i}.</span>
+                            <span class="w-20 font-bold ${score > 0 ? 'text-white' : 'text-black bg-white rounded px-1'}">${scoreText}</span>
+                            <span class="flex-1 text-right ${colorClass}">${comment}</span>
+                        </div>
+                    `;
+                    prevScore = score;
+                });
+                content.innerHTML = html;
+            }, 100);
+        }
+
+        function reviewMoveAtIndex(i) {
+            viewIndex = i;
+            const state = history[viewIndex];
+            if (state) {
+                board = state.board;
+                turn = state.turn;
+                castling = state.castling;
+                enPassant = state.enPassant;
+                lastMove = state.lastMove;
+                isGameOver = state.isGameOver;
+                updateMoveCounter();
+                renderBoard();
+                const boardWrap = document.getElementById('board-wrap');
+                if (viewIndex < history.length - 1) {
+                    boardWrap.classList.add('review-mode');
+                    document.getElementById('status-message').innerText = "Reviewing History...";
+                } else {
+                    boardWrap.classList.remove('review-mode');
+                    updateStatus();
+                }
+            }
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 8: RENDERING
+        // ════════════════════════════════════════
+        function renderBoard() {
+            const boardEl = document.getElementById('chessboard');
+            boardEl.innerHTML = '';
+            
+            const rowIndices = isFlipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+            const colIndices = isFlipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+
+            rowIndices.forEach(r => {
+                colIndices.forEach(c => {
+                    const square = document.createElement('div');
+                    const isDark = (r + c) % 2 === 1;
+                    square.className = `square ${isDark ? 'dark' : 'light'}`;
+
+                    if (r === (isFlipped ? 0 : 7)) {
+                        const fl = document.createElement('span');
+                        fl.className = 'coord-label';
+                        fl.style.cssText = 'bottom:2px;right:3px;color:' + (isDark ? '#eaddcf' : '#a87b51');
+                        fl.innerText = String.fromCharCode(97 + c);
+                        square.appendChild(fl);
+                    }
+                    if (c === (isFlipped ? 7 : 0)) {
+                        const rl = document.createElement('span');
+                        rl.className = 'coord-label';
+                        rl.style.cssText = 'top:2px;left:3px;color:' + (isDark ? '#eaddcf' : '#a87b51');
+                        rl.innerText = String(8 - r);
+                        square.appendChild(rl);
+                    }
+                    
+                    if (selectedSquare && selectedSquare.r === r && selectedSquare.c === c) square.classList.add('selected');
+                    if (board[r][c] && board[r][c].type === 'k' && board[r][c].color === turn && isSquareAttacked(r,c, turn==='w'?'b':'w')) square.classList.add('check');
+
+                    if (lastMove) {
+                        if ((lastMove.from.r === r && lastMove.from.c === c) || 
+                            (lastMove.to.r === r && lastMove.to.c === c)) {
+                            square.classList.add('last-move');
+                        }
+                    }
+
+                    const move = validMoves.find(m => m.r === r && m.c === c);
+                    if (move) {
+                        const target = board[r][c];
+                        if (target || (selectedSquare && board[selectedSquare.r][selectedSquare.c].type==='p' && c!==selectedSquare.c)) {
+                            const ring = document.createElement('div');
+                            ring.className = 'capture-ring';
+                            square.appendChild(ring);
+                        } else {
+                            const dot = document.createElement('div');
+                            dot.className = 'hint-dot';
+                            square.appendChild(dot);
+                        }
+                    }
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        const div = document.createElement('div');
+                        if (piece.army === 'western') {
+                            const colorClass = piece.color === 'w' ? 'white' : 'black';
+                            div.className = `piece western-piece ${colorClass}`;
+                            div.innerHTML = WESTERN_PIECES[piece.color][piece.type];
+                        } else if (piece.army === 'empire') {
+                            const colorClass = piece.color === 'w' ? 'white' : '';
+                            div.className = `piece xiangqi-piece ${colorClass} ${piece.type==='q'?'cannon-piece':''}`;
+                            div.innerHTML = EMPIRE_PIECES[piece.type];
+                        } else {
+                            div.className = `piece african-piece ${piece.color==='w'?'african-bg-w':'african-bg-b'}`;
+                            div.innerHTML = AFRICAN_PIECES[piece.type];
+                        }
+
+                        if (piece.charges > 0) {
+                            if (piece.charges === 1) {
+                                const p = document.createElement('div'); p.className = 'charge-pip pip-center'; div.appendChild(p);
+                            } else {
+                                const p1 = document.createElement('div'); p1.className = 'charge-pip pip-1'; div.appendChild(p1);
+                                const p2 = document.createElement('div'); p2.className = 'charge-pip pip-2'; div.appendChild(p2);
+                            }
+                        }
+
+                        div.onclick = (e) => { e.stopPropagation(); handleSquareClick(r,c); };
+                        square.appendChild(div);
+                    } else {
+                        square.onclick = () => handleSquareClick(r,c);
+                    }
+                    boardEl.appendChild(square);
+                });
+            });
+
+            if (lastMove && viewIndex >= history.length - 1) {
+                const squareSize = boardEl.offsetWidth / BOARD_SIZE;
+                const fromRow = isFlipped ? (7 - lastMove.from.r) : lastMove.from.r;
+                const fromCol = isFlipped ? (7 - lastMove.from.c) : lastMove.from.c;
+                const toRow = isFlipped ? (7 - lastMove.to.r) : lastMove.to.r;
+                const toCol = isFlipped ? (7 - lastMove.to.c) : lastMove.to.c;
+                const toFlatIdx = toRow * BOARD_SIZE + toCol;
+                const destSquare = boardEl.children[toFlatIdx];
+                const pieceDiv = destSquare ? destSquare.querySelector('.piece') : null;
+                if (pieceDiv) {
+                    const deltaX = (fromCol - toCol) * squareSize;
+                    const deltaY = (fromRow - toRow) * squareSize;
+                    pieceDiv.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+                    pieceDiv.style.zIndex = '50';
+                    pieceDiv.offsetHeight;
+                    pieceDiv.classList.add('piece-sliding');
+                    pieceDiv.style.transform = 'translate(0, 0)';
+                    setTimeout(() => {
+                        pieceDiv.classList.remove('piece-sliding');
+                        pieceDiv.style.zIndex = '';
+                    }, 220);
+                }
+            }
+            updateCapturedPieces();
+        }
+
+        // ════════════════════════════════════════
+        // SECTION 9: UI HANDLERS & MODALS
+        // ════════════════════════════════════════
+        function handleSquareClick(r, c) {
+            SoundManager.init();
+            // Block interaction if in review mode
+            if (viewIndex < history.length - 1) return; 
+            if (isGameOver || aiThinking) return;
+            if (gameMode === 'ai' && turn === 'b') return;
+
+            const p = board[r][c];
+            if (p && p.color === turn) {
+                selectedSquare = {r,c};
+                validMoves = getLegalMoves(r,c);
+                renderBoard();
+            } else if (selectedSquare) {
+                const move = validMoves.find(m => m.r === r && m.c === c);
+                if (move) executeMove(move);
+                else { selectedSquare = null; validMoves = []; renderBoard(); }
+            }
+        }
+
+        // --- Promotion UI ---
+        function showPromotionModal(r, c, color, army) {
+            const modal = document.getElementById('promotion-modal');
+            const container = document.getElementById('promotion-options');
+            container.innerHTML = '';
+            modal.classList.remove('hidden');
+
+            const options = [];
+            if (army === 'western') {
+                options.push({t:'q', l:'Queen', s:'♕'}, {t:'r', l:'Rook', s:'♖'}, {t:'b', l:'Bishop', s:'♗'}, {t:'n', l:'Knight', s:'♘'});
+            } else if (army === 'empire') {
+                options.push({t:'q', l:'Cannon', s:'砲'}, {t:'r', l:'Chariot', s:'車'}, {t:'b', l:'Minister', s:'相'}, {t:'n', l:'Horse', s:'馬'});
+            } else {
+                options.push({t:'q', l:'Leopard', s:'🐆'}, {t:'r', l:'Elephant', s:'🐘'}, {t:'b', l:'Chimp', s:'🐵'}, {t:'n', l:'Zebra', s:'🦓'});
+            }
+
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "flex flex-col items-center p-3 bg-gray-700 hover:bg-gray-600 rounded border border-gray-500 transition hover:scale-105";
+                btn.innerHTML = `<span class="text-4xl mb-2 text-white">${opt.s}</span><span class="text-xs text-gray-300">${opt.l}</span>`;
+                btn.onclick = () => {
+                    placePiece(r, c, opt.t, color, army);
+                    finishTurn();
+                    modal.classList.add('hidden');
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function updateStatus(check) {
+            const ind = document.getElementById('turn-indicator');
+            const msg = document.getElementById('status-message');
+            
+            if (turn === 'w') {
+                ind.innerText = "White's Turn";
+                ind.className = "px-3 py-1 bg-white text-black rounded font-bold shadow-md border border-gray-300";
+            } else {
+                ind.innerText = "Black's Turn";
+                ind.className = "px-3 py-1 bg-black text-white border border-gray-600 rounded font-bold shadow-md";
+            }
+
+            let badge = document.getElementById('difficulty-badge');
+            if (!badge) {
+                badge = document.createElement('span');
+                badge.id = 'difficulty-badge';
+                badge.className = 'px-2 py-1 bg-gray-800 text-amber-400 rounded text-xs border border-gray-600';
+                document.getElementById('turn-indicator').insertAdjacentElement('afterend', badge);
+            }
+            if (gameMode === 'ai') {
+                badge.innerText = aiDifficulty.charAt(0).toUpperCase() + aiDifficulty.slice(1);
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+
+            if (!isGameOver) {
+                if (check) msg.innerText = "Check!";
+                else if (aiThinking) msg.innerText = "AI Thinking...";
+                else msg.innerText = "";
+            }
+        }
+
+        function updateMuteButton() {
+            const btn = document.getElementById('mute-btn');
+            if (btn) btn.innerText = SoundManager.muted ? '🔇' : '🔊';
+        }
+
+        function updateCapturedPieces() {
+            if (history.length === 0) return;
+            const initial = history[0].board;
+            const current = history[viewIndex] ? history[viewIndex].board : board;
+            function count(brd) {
+                const c = {};
+                for (let r = 0; r < BOARD_SIZE; r++) {
+                    for (let col = 0; col < BOARD_SIZE; col++) {
+                        const p = brd[r][col];
+                        if (p) {
+                            const key = p.color + '_' + p.type + '_' + p.army;
+                            c[key] = (c[key] || 0) + 1;
+                        }
+                    }
+                }
+                return c;
+            }
+            function getSymbol(type, color, army) {
+                if (army === 'western') return WESTERN_PIECES[color][type];
+                if (army === 'empire') return EMPIRE_PIECES[type];
+                return AFRICAN_PIECES[type];
+            }
+            const initC = count(initial), currC = count(current);
+            const capturedW = [], capturedB = [];
+            for (const key in initC) {
+                const diff = initC[key] - (currC[key] || 0);
+                if (diff > 0) {
+                    const [color, type, army] = key.split('_');
+                    const sym = getSymbol(type, color, army);
+                    for (let i = 0; i < diff; i++) {
+                        if (color === WHITE) capturedW.push(sym);
+                        else capturedB.push(sym);
+                    }
+                }
+            }
+            const topEl = document.getElementById('captured-top');
+            const botEl = document.getElementById('captured-bottom');
+            const topPieces = isFlipped ? capturedB : capturedW;
+            const botPieces = isFlipped ? capturedW : capturedB;
+            topEl.innerHTML = topPieces.map(s => `<span class="text-base">${s}</span>`).join('');
+            botEl.innerHTML = botPieces.map(s => `<span class="text-base">${s}</span>`).join('');
+        }
+
+        function showLegend() { document.getElementById('legend-modal').classList.remove('hidden'); }
+        function hideLegend() { document.getElementById('legend-modal').classList.add('hidden'); }
+        function showRules() { document.getElementById('rules-modal').classList.remove('hidden'); }
+        function hideRules() { document.getElementById('rules-modal').classList.add('hidden'); }
+
+        // ════════════════════════════════════════
+        // SECTION 10: SAVE / LOAD / SHARE
+        // ════════════════════════════════════════
+        function getGameState() {
+            return {
+                h: history, // Save entire history for review features
+                a: armies,
+                gm: gameMode,
+                ad: aiDifficulty,
+                pc: 'w', // Assume player is white when reloading file for simplicity or store custom
+                if: isFlipped
+            };
+        }
+
+        function shareGame() {
+            const json = JSON.stringify(getGameState());
+            const encoded = btoa(json);
+            const url = window.location.href.split('?')[0] + '?state=' + encoded;
+            navigator.clipboard.writeText(url).then(() => {
+                const msg = document.getElementById('status-message');
+                const old = msg.innerText;
+                msg.innerText = "Link Copied!";
+                setTimeout(() => msg.innerText = old, 2000);
+            });
+        }
+
+        function downloadGame() {
+            const state = getGameState();
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
+            const anchor = document.createElement('a');
+            anchor.setAttribute("href", dataStr);
+            anchor.setAttribute("download", "intercontinental_chess_save.json");
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+        }
+
+        function loadGame(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const state = JSON.parse(e.target.result);
+                    restoreState(state);
+                } catch(err) {
+                    alert("Invalid Save File");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function restoreState(state) {
+            history = state.h || state.history || []; // Handle potential legacy format
+            armies = state.a || state.armies;
+            gameMode = state.gm || state.gameMode;
+            aiDifficulty = state.ad || aiDifficulty;
+            isFlipped = state.if || false;
+            
+            // Restore latest state
+            viewIndex = history.length - 1;
+            reviewMove('end');
+            
+            document.getElementById('start-menu').classList.add('hidden');
+            // Sync UI
+            document.getElementById('white-army-select').value = armies.w;
+            document.getElementById('black-army-select').value = armies.b;
+            const difficultySelect = document.getElementById('difficulty-select');
+            if (difficultySelect) difficultySelect.value = aiDifficulty;
+        }
+
+        function loadFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const encoded = params.get('state');
+            if (encoded) {
+                try {
+                    const json = atob(encoded);
+                    const state = JSON.parse(json);
+                    restoreState(state);
+                    return true;
+                } catch (e) { console.error("Load Failed", e); }
+            }
+            return false;
+        }
+
+        document.addEventListener('keydown', function(e) {
+            const modalsOpen = !document.getElementById('start-menu').classList.contains('hidden')
+                || !document.getElementById('promotion-modal').classList.contains('hidden');
+
+            if (e.key === 'Escape') {
+                document.getElementById('legend-modal').classList.add('hidden');
+                document.getElementById('rules-modal').classList.add('hidden');
+                document.getElementById('analysis-modal').classList.add('hidden');
+                if (!modalsOpen) { selectedSquare = null; validMoves = []; renderBoard(); }
+                return;
+            }
+
+            if (modalsOpen) return;
+
+            switch (e.key) {
+                case 'ArrowLeft': e.preventDefault(); reviewMove('prev'); break;
+                case 'ArrowRight': e.preventDefault(); reviewMove('next'); break;
+                case 'Home': e.preventDefault(); reviewMove('start'); break;
+                case 'End': e.preventDefault(); reviewMove('end'); break;
+                case 'f':
+                case 'F': toggleFlip(); break;
+            }
+        });
+
+        // ════════════════════════════════════════
+        // BOOT
+        // ════════════════════════════════════════
+        SoundManager.init();
+        initNNWorker();
+        if (!loadFromURL()) {
+            showStartMenu();
+        }
+
+        window.addEventListener('beforeunload', function() {
+            cancelNNSearch();
+            if (nnWorker) { nnWorker.terminate(); nnWorker = null; }
+        });
+    </script>
+</body>
+</html>
